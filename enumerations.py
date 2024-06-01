@@ -81,3 +81,16 @@ class DeclaredTypes(Enum):
     OTHER_THAN_NEW = 'O'
 
 
+class HazMatCompatibilities(Enum):
+    CLASS_1_4 = ["B", "C", "D", "E", "F", "G", "S"]
+    CLASS_1_5 = ["D"]
+    CLASS_1_6 = ["N"]
+
+
+class HazMatZones(Enum):
+    CLASS_2_3 = ["A", "B", "C", "D"]
+    CLASS_6_1 = ["A", "B"]
+
+
+
+
