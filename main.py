@@ -4,7 +4,8 @@ import pprint
 import requests
 import xmltodict
 
-from enumerations import ShipmentClasses, PackageType, UnitsOfMeasurement, LimitedAccessOptions, TradeshowDeliveryTypes
+from enumerations import ShipmentClasses, PackageType, UnitsOfMeasurement, LimitedAccessOptions, TradeshowDeliveryTypes, \
+    DeclaredTypes
 
 """
 https://www.abfs.com/xml/aquotexml.asp?
@@ -243,13 +244,100 @@ class DeliveryServices:
         }.items() if value is not None}
 
 
+class AdditionalServices:
+    def __init__(self,
+                 do_not_stack: bool | None = None,
+                 arrival_notification: bool | None = None,
+                 capacity_load: bool | None = None,
+                 bond: bool | None = None,
+                 excess_liability: bool | None = None,
+                 declared_value: int | None = None,
+                 declared_type: DeclaredTypes | None = None,
+                 over_dimension: bool | None = None,
+                 longest_side: int | None = None,
+                 single_shipment: bool | None = None,
+                 sort_and_segregate: bool | None = None,
+                 num_to_sort_and_segregate: int | None = None,
+                 truck_pack: bool | None = None,
+                 truck_pack_count: int | None = None,
+                 freeze_protection: bool | None = None,
+                 shipper_loading: bool | None = None,
+                 consignee_unloading: bool | None = None,
+                 hazmat: bool | None = None,
+                 pallet: bool | None = None,
+                 terminal_delivery: bool | None = None,
+                 terminal_pickup: bool | None = None):
+
+        if declared_value is not None and declared_type is None:
+            raise ValueError('If declared_value is provided, declared_type must be provided')
+
+        self.do_not_stack = do_not_stack
+        self.arrival_notification = arrival_notification
+        self.capacity_load = capacity_load
+        self.bond = bond
+        self.excess_liability = excess_liability
+        self.declared_value = declared_value
+        self.declared_type = declared_type
+        self.over_dimension = over_dimension
+        self.longest_side = longest_side
+        self.single_shipment = single_shipment
+        self.sort_and_segregate = sort_and_segregate
+        self.num_to_sort_and_segregate = num_to_sort_and_segregate
+        self.truck_pack = truck_pack
+        self.truck_pack_count = truck_pack_count
+        self.freeze_protection = freeze_protection
+        self.shipper_loading = shipper_loading
+        self.consignee_unloading = consignee_unloading
+        self.hazmat = hazmat
+        self.pallet = pallet
+        self.terminal_delivery = terminal_delivery
+        self.terminal_pickup = terminal_pickup
+
+        if self.excess_liability is not None and self.declared_value is None:
+            raise ValueError('If excess_liability is true, the declared value must be provided')
+        if self.excess_liability is not None and self.declared_type is None:
+            raise ValueError('If excess_liability is true, the declared type must be provided')
+        if self.sort_and_segregate is not None and self.num_to_sort_and_segregate is None:
+            raise ValueError('If sort_and_segregate is true, the number of packages to sort and separate must be provided')
+        if self.truck_pack is not None and self.truck_pack_count is None:
+            raise ValueError('If truck_pack is true, the number of packages in the truck must be provided')
+
+    def as_dict(self):
+        return {key: value for key, value in {
+            'Acc_NFOT': bool_to_str(self.do_not_stack),
+            'Acc_ARR': bool_to_str(self.arrival_notification),
+            'Acc_CAP': bool_to_str(self.capacity_load),
+            'Acc_BOND': bool_to_str(self.bond),
+            'Acc_ELC': bool_to_str(self.excess_liability),
+            'DeclaredValue': self.declared_value,
+            'DeclaredType': self.declared_type.value if self.declared_type else None,
+            'Acc_OD': bool_to_str(self.over_dimension),
+            'ODLongestSide': self.longest_side,
+            'Acc_SS': bool_to_str(self.single_shipment),
+            'Acc_SEG': bool_to_str(self.sort_and_segregate),
+            'SegPieces': self.num_to_sort_and_segregate,
+            'Acc_TRPACK': bool_to_str(self.truck_pack),
+            'TPBoxes': self.truck_pack_count,
+            'Acc_FRE': bool_to_str(self.freeze_protection),
+            'Acc_SL': bool_to_str(self.shipper_loading),
+            'Acc_CUL': bool_to_str(self.consignee_unloading),
+            'Acc_HAZ': bool_to_str(self.hazmat),
+            'Acc_PALLET': bool_to_str(self.pallet),
+            'Acc_DOCKDEL': bool_to_str(self.terminal_delivery),
+            'Acc_DOCKPU': bool_to_str(self.terminal_pickup),
+        }.items() if value is not None}
+
+
 def get_quote(shipper: ShippingParty,
               consignee: ShippingParty,
               commodity: Commodity,
               shipment_specifics: ShipmentSpecifics,
-              pickup_services: PickupServices,
-              delivery_services: DeliveryServices
-              ):
+              pickup_services: PickupServices | None = None,
+              delivery_services: DeliveryServices | None = None,
+              additional_services: AdditionalServices | None = None
+              ) -> dict | None:
+
+    response_dict = None
 
     arcbest_quote_api_endpoint = 'https://www.abfs.com/xml/aquotexml.asp'
     arcbest_api_key = os.environ.get('ARCBEST_API_KEY')
@@ -257,12 +345,19 @@ def get_quote(shipper: ShippingParty,
                  **consignee.as_consignee_dict(),
                  **commodity.as_dict(),
                  **shipment_specifics.as_dict(),
-                 **pickup_services.as_dict(),
-                 **delivery_services.as_dict(),
                  'ID': arcbest_api_key}
 
+    if pickup_services is not None:
+        post_body.update(pickup_services.as_dict())
+
+    if delivery_services is not None:
+        post_body.update(delivery_services.as_dict())
+
+    if additional_services is not None:
+        post_body.update(additional_services.as_dict())
+
     print(f'Arcbest API request: {post_body}')
-    # NB: the response is in XML!
+    # NB: the response.text is XML!
     response = requests.post(url=arcbest_quote_api_endpoint, params={'api_key': arcbest_api_key}, data=post_body)
 
     if response.status_code == 200:
@@ -271,6 +366,8 @@ def get_quote(shipper: ShippingParty,
         print(f'Arcbest API response dict: {pp.pprint(response_dict)}')
     else:
         print(f'Arcbest API request failed with status code: {response.status_code}')
+
+    return response_dict
 
 
 def get_current_date() -> tuple:
@@ -290,7 +387,7 @@ if __name__ == '__main__':
     shipment_specifics = ShipmentSpecifics(shipDay=today[0], shipMonth=today[1], shipYear=today[2], measurement_unit=UnitsOfMeasurement.IN)
     pickup_services = PickupServices(lift_gate=True, residential=True)
     delivery_services = DeliveryServices(lift_gate=True, residential=True)
-
+    # additional_services = AdditionalServices(excess_liability=True, declared_type=DeclaredTypes.NEW, declared_value=5000, pallet=True)
     get_quote(shipper=shipper,
               consignee=consignee,
               commodity=commodity,

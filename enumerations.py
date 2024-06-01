@@ -70,6 +70,14 @@ class LimitedAccessOptions(Enum):
     MINI_STORAGE = "U"
     OTHER = "O"
 
+
 class TradeshowDeliveryTypes(Enum):
     ADVANCED_WAREHOUSE = "AW"
     DIRECT_TO_TRADE_SHOW = "DTS"
+
+
+class DeclaredTypes(Enum):
+    NEW = 'N'
+    OTHER_THAN_NEW = 'O'
+
+
