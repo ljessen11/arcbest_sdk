@@ -1,6 +1,8 @@
+import re
 from enum import Enum
 from datetime import date
-from enumerations import PackageType, HazMatCompatibilities, HazMatZones, UnitsOfMeasurement
+from enumerations import PackageType, HazMatCompatibilities, HazMatZones, UnitsOfMeasurement, LimitedAccessOptions
+from email_validator import validate_email, EmailNotValidError
 
 bool_to_str = lambda x: 'Y' if x else 'N'
 
@@ -231,7 +233,8 @@ class CommodityLine():
 
 
 class ShipmentSpecifics:
-    def __init__(self, shipDate: date | None = None,
+    def __init__(self,
+                 shipDate: date | None = None,
                  other_carrier: str | None = None,
                  pro_number: int | None = None,
                  pro_number_check_digit: int | None = None,
@@ -266,3 +269,320 @@ class ShipmentSpecifics:
             'LWHType': self.cube_unit_of_measurement.value if self.cube_unit_of_measurement else None,
         }.items() if value is not None}
 
+class DeliveryDateTypes(Enum):
+    BY: 'by'
+    ON: 'on'
+    BETWEEN: 'between'
+
+class DeliveryTimeTypes(Enum):
+    BY: 'by'
+    BETWEEN: 'between'
+
+
+def is_valid_time(time_str: str) -> bool:
+    # Define the regex pattern to match the format HH:MM
+    pattern = r"^(09|1[0-7]):(00|15|30|45)$"
+
+    # Check if the input string matches the pattern
+    if re.match(pattern, time_str):
+        return True
+    else:
+        return False
+
+class TimeCriticalShipmentSpecifics:
+    def __init__(self,
+                 isTimeCritical: bool | None = True,
+                 DeliveryDateType: DeliveryDateTypes | None = None,
+                 DeliveryDateMin: date | None = None,
+                 DeliveryDateMax: date | None = None,
+                 DeliveryTimeType: DeliveryTimeTypes | None = None,
+                 DeliveryTime: str | None = None,
+                 DeliveryTimeMin: str | None = None,
+                 DeliveryTimeMax: str | None = None):
+
+        if DeliveryTimeMin is None:
+            raise ValueError('DeliveryTimeMin is required to be in the format for all delivery time fields:'
+                             ' hh:MM in military format (24-hour) in fifteen-minute increments'
+                             ' between 9:00 and 17:00')
+        if DeliveryTimeMax is None:
+            raise ValueError('DeliveryTimeMax is required to be in the format for all delivery time fields:'
+                             ' hh:MM in military format (24-hour) in fifteen-minute increments'
+                             ' between 9:00 and 17:00')
+
+        self.isTimeCritical = isTimeCritical
+        self.DeliveryDateType = DeliveryDateType
+        self.DeliveryDateMin = DeliveryDateMin
+        self.DeliveryDateMax = DeliveryDateMax
+        self.DeliveryTimeType = DeliveryTimeType
+        self.DeliveryTime = DeliveryTime
+        self.DeliveryTimeMin = DeliveryTimeMin
+        self.DeliveryTimeMax = DeliveryTimeMax
+
+    def as_dict(self):
+        return {key: value for key, value in {
+            'TimeKeeper': bool_to_str(self.isTimeCritical),
+            'DeliveryDateType': self.DeliveryDateType.value if self.DeliveryDateType else None,
+            'DeliveryDateMin': self.DeliveryDateMin.strftime("%m/%d/%y") if self.DeliveryDateMin else None,
+            'DeliveryDateMax': self.DeliveryDateMax.strftime("%m/%d/%y") if self.DeliveryDateMax else None,
+            'DeliveryTimeType': self.DeliveryTimeType.value if self.DeliveryTimeType else None,
+            'DeliveryTime': self.DeliveryTime,
+            'DeliveryTimeMin': self.DeliveryTimeMin,
+            'DeliveryTimeMax': self.DeliveryTimeMax,
+        }.items() if value is not None}
+
+class ReferenceNumbers():
+    def __init__(self,
+                 bol_number: str | None = None,
+                 PO_number: int | None = None,
+                 actual_po_number: str | None = None,
+                 PO_pieces: int | None = None,
+                 PO_weight: float | None = None,
+                 PO_department: str | None = None,
+                 customer_reference_number: str | None = None):
+
+        if PO_number is not None and (PO_number == 0 or PO_number > 10):
+            raise ValueError('If PO_number is provided, it must be between 1 and 10')
+        self.bol_number = bol_number
+        self.PO_number = PO_number
+        self.actual_po_number = actual_po_number
+        self.PO_pieces = PO_pieces
+        self.PO_weight = PO_weight
+        self.PO_department = PO_department
+        self.customer_reference_number = customer_reference_number
+
+    def as_dict(self):
+        return {key: value for key, value in {
+            'Bol': self.bol_number,
+            f'PO{self.PO_number}': self.actual_po_number,
+            f'POPiece{self.PO_number}': self.PO_pieces,
+            f'POWeight{self.PO_number}': self.PO_weight,
+            f'PODept{self.PO_number}': self.PO_department,
+            f'CRN{self.PO_number}': self.customer_reference_number
+        }.items() if value is not None}
+
+
+class CopyConfirmation:
+    def __init__(self, bol_to_shipper: bool | None = None,
+                 bol_to_consignee: bool | None = None,
+                 bol_to_third_party: bool | None = None,
+                 bol_to_emails: [str] | None = None,
+                 shipping_lables_to_shipper: bool | None = None,
+                 shipping_labels_to_consignee: bool | None = None,
+                 shipping_labels_to_third_party: bool | None = None,
+                 shipping_labels_to_emails: [str] | None = None):
+
+        self.validate_emails()
+
+        self.bol_to_shipper = bol_to_shipper
+        self.bol_to_consignee = bol_to_consignee
+        self.bol_to_third_party = bol_to_third_party
+        self.bol_to_emails = bol_to_emails
+        self.shipping_lables_to_shipper = shipping_lables_to_shipper
+        self.shipping_labels_to_consignee = shipping_labels_to_consignee
+        self.shipping_labels_to_third_party = shipping_labels_to_third_party
+        self.shipping_labels_to_emails = shipping_labels_to_emails
+
+    def validate_emails(self):
+        invalid_emails = []
+
+        if self.bol_to_emails:
+            for email in self.bol_to_emails:
+                if not self.is_valid_email(email):
+                    invalid_emails.append(email)
+
+        if self.shipping_labels_to_emails:
+            for email in self.shipping_labels_to_emails:
+                if not self.is_valid_email(email):
+                    invalid_emails.append(email)
+
+        if invalid_emails:
+            raise ValueError(f"Invalid email addresses: {invalid_emails}")
+
+    @staticmethod
+    def is_valid_email(email: str) -> bool:
+        try:
+            validate_email(email)
+            return True
+        except EmailNotValidError:
+            return False
+
+    def as_dict(self):
+        return {key: value for key, value in {
+            'BolCopyShip': bool_to_str(self.bol_to_shipper),
+            'BolCopyCons': bool_to_str(self.bol_to_consignee),
+            'BolCopyTPB': bool_to_str(self.bol_to_third_party),
+            'BolCopyAdd': ','.join(self.bol_to_emails) if self.bol_to_emails else None,
+            'BolCopyLabelShip': bool_to_str(self.shipping_lables_to_shipper),
+            'BolCopyLabelCons': bool_to_str(self.shipping_labels_to_consignee),
+            'BolCopyLabelTPB': bool_to_str(self.shipping_labels_to_third_party),
+            'BolCopyLabelAdd': ','.join(self.shipping_labels_to_emails) if self.shipping_labels_to_emails else None
+        }.items() if value is not None}
+
+class PickupOptions:
+    def __init__(self,
+                 liftgate: bool | None = None,
+                 inside: bool | None = None,
+                 limited_access: bool | None = None,
+                 limited_access_type: LimitedAccessOptions | None = None,
+                 residential_pickup: bool | None = None):
+
+        self.liftgate = liftgate
+        self.inside = inside
+        self.limited_access = limited_access
+        self.limited_access_type = limited_access_type
+        self.residential_pickup = residential_pickup
+
+    def as_dict(self):
+        return {key: value for key, value in {
+            'Acc_GRD_PU': bool_to_str(self.liftgate),
+            'Acc_IPU': bool_to_str(self.inside),
+            'Acc_LAP': bool_to_str(self.limited_access),
+            'LAPType': self.limited_access_type.value if self.limited_access_type else None,
+            'Acc_RPU': bool_to_str(self.residential_pickup),
+        }.items() if value is not None}
+
+class DeliveryOptions:
+    def __init__(self,
+                 construction_site: bool | None = None,
+                 on_date: bool | None = None,
+                 liftgate: bool | None = None,
+                 inside: bool | None = None,
+                 limited_access: bool | None = None,
+                 limited_access_type: LimitedAccessOptions | None = None,
+                 residential_delivery: bool | None = None,
+                 flatbed: bool | None = None,
+                ):
+
+        self.construction_site = construction_site
+        self.on_date = on_date
+        self.liftgate = liftgate
+        self.inside = inside
+        self.limited_access = limited_access
+        self.limited_access_type = limited_access_type
+        self.residential_delivery = residential_delivery
+        self.flatbed = flatbed
+
+    def as_dict(self):
+        return {key: value for key, value in {
+            'Acc_CSD': bool_to_str(self.construction_site),
+            'Acc_DELON': bool_to_str(self.on_date),
+            'Acc_GRD_DEL': bool_to_str(self.liftgate),
+            'Acc_IDEL': bool_to_str(self.inside),
+            'Acc_LAD': bool_to_str(self.limited_access),
+            'LADType': self.limited_access_type.value if self.limited_access_type else None,
+            'Acc_RDEL': bool_to_str(self.residential_delivery),
+            'Acc_FLATBD': bool_to_str(self.flatbed),
+        }.items() if value is not None}
+
+
+class AdditionalServices:
+    def __init__(self,
+                 arrival_notification: bool | None = None,
+                 capacity_load: bool | None = None,
+                 customs_or_in_bond_freight: bool | None = None,
+                 excess_liablity_coverage: bool | None = None,
+                 declared_value: float | None = None,
+                 over_dimension: bool | None = None,
+                 longest_dimension: float | None = None,
+                 single_shipment: bool | None = None,
+                 sort_and_segregate: bool | None = None,
+                 number_of_pieces_to_sort_and_segregate: int | None = None,
+                 truck_pack_shipment: bool | None = None,
+                 number_truck_pack_boxes: int | None = None,
+                 secure_shipment_divider: bool | None = None,
+                 freeze_protection: bool | None = None
+                 ):
+
+        if (number_of_pieces_to_sort_and_segregate is not None
+                and number_of_pieces_to_sort_and_segregate is not None
+                and number_of_pieces_to_sort_and_segregate < 1):
+            raise ValueError('Number of pieces to sort and segregate must be greater than 0')
+
+        if (number_truck_pack_boxes is not None
+                and number_truck_pack_boxes is not None
+                and number_truck_pack_boxes < 1):
+            raise ValueError('Number of truck pack boxes must be greater than 0')
+
+        self.arrival_notification = arrival_notification
+        self.capacity_load = capacity_load
+        self.customs_or_in_bond_freight = customs_or_in_bond_freight
+        self.excess_liability_coverage = excess_liablity_coverage
+        self.declared_value = declared_value
+        self.over_dimension = over_dimension
+        self.longest_dimension = longest_dimension
+        self.single_shipment = single_shipment
+        self.sort_and_segregate = sort_and_segregate
+        self.number_of_pieces_to_sort_and_segregate = number_of_pieces_to_sort_and_segregate
+        self.truck_pack_shipment = truck_pack_shipment
+        self.number_truck_pack_boxes = number_truck_pack_boxes
+        self.secure_shipment_divider = secure_shipment_divider
+        self.freeze_protection = freeze_protection
+
+    def as_dict(self):
+        return {key: value for key, value in {
+            'Acc_AR': self.arrival_notification,
+            'Acc_CAP': self.capacity_load,
+            'Acc_BOND': self.customs_or_in_bond_freight,
+            'Acc_ELC': self.excess_liability_coverage,
+            'DeclaredValue': self.declared_value,
+            'Acc_OD': self.over_dimension,
+            'ODLongestSide': self.longest_dimension,
+            'Acc_SS': self.single_shipment,
+            'Acc_SEG': self.sort_and_segregate,
+            'SegPieces': self.number_of_pieces_to_sort_and_segregate,
+            'Acc_TRPACK': self.truck_pack_shipment,
+            'TPBoxes': self.number_truck_pack_boxes,
+            'Acc_BLKH': self.secure_shipment_divider,
+            'Acc_FRE': self.freeze_protection
+        }.items() if value is not None}
+
+
+class FileFormats(Enum):
+    A = "A" # Adobe acrobat
+    H = "H" # HTML
+
+
+class LabelFormats(Enum):
+    """
+    6 per page - Compatible with Avery Shipping Labels 5164, 5264, 5524, 8164, 8254, 8464, 48464, 55164, 58164
+    4 per page - Compatible with Avery Shipping Labels 5168, 6878
+    2 per page - Compatible with Avery Shipping Labels 5126, 5526, 8126, 15516, 18126
+    1 per page - Compatible with Avery Shipping Labels 5165, 5265, 5353, 8165, 8255, 8264, 8665, 18665
+    Zebra - Compatible with 4" x 6" Zebra Labels
+    """
+    SIX_PER_PAGE = "6"
+    FOUR_PER_PAGE = "4"
+    TWO_PER_PAGE = "2"
+    ONE_PER_PAGE = "1"
+    ZEBRA = "Z"
+
+
+class DocLabelInfo:
+    def __init__(self,
+                 file_format: FileFormats | None = FileFormats.A,
+                 using_inject_printer: bool | None = None,
+                 label_format: LabelFormats | None = None,
+                 number_shipping_labels_to_create: int | None = None,
+                 start_position_avery_5264: int | None = None,
+                 number_pro_labels: int | None = None,
+                 starting_page_avery_5160: int | None = None
+                 ):
+
+        self.file_format = file_format
+        self.using_inject_printer = using_inject_printer
+        self.label_format = label_format
+        self.number_shipping_labels_to_create = number_shipping_labels_to_create
+        self.start_position_avery_5264 = start_position_avery_5264
+        self.number_pro_labels = number_pro_labels
+        self.starting_page_avery_5160 = starting_page_avery_5160
+
+    def as_dict(self):
+        return {key: value for key, value in {
+            'FileFormat': self.file_format.value if self.file_format else None,
+            'InkJetPrinter': bool_to_str(self.using_inject_printer),
+            'LabelFormat': self.label_format.value if self.label_format else None,
+            'LableNum': self.number_shipping_labels_to_create,
+            'StartPositionAvery5264': self.start_position_avery_5264,
+            'ProLabelNum': self.number_pro_labels,
+            'ProLabelStart': self.starting_page_avery_5160
+        }.items() if value is not None}
