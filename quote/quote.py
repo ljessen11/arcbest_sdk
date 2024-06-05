@@ -1,11 +1,11 @@
 import os
-from datetime import datetime
-import pprint
+# import pprint
 import requests
 import xmltodict
+from enum import Enum
 
-from enumerations import ShipmentClasses, PackageType, UnitsOfMeasurement, LimitedAccessOptions, TradeshowDeliveryTypes, \
-    DeclaredTypes
+from utils import bool_to_str, get_current_date_as_tuple, pp
+from shared_enums import PackageType, UnitsOfMeasurement, LimitedAccessOptions
 
 """
 https://www.abfs.com/xml/aquotexml.asp?
@@ -36,8 +36,40 @@ ShipMonth=05&
 ShipDay=30&
 ShipYear=2024
 """
-pp = pprint.PrettyPrinter(indent=4)
-bool_to_str = lambda x: 'Y' if x else 'N'
+# pp = pprint.PrettyPrinter(indent=4)
+# bool_to_str = lambda x: 'Y' if x else 'N'
+
+
+class ShipmentClasses(Enum):
+    CLASS_50 = 50
+    CLASS_55 = 55
+    CLASS_60 = 60
+    CLASS_65 = 65
+    CLASS_70 = 70
+    CLASS_77_5 = 77.5
+    CLASS_85 = 85
+    CLASS_92_5 = 92.5
+    CLASS_100 = 100
+    CLASS_110 = 110
+    CLASS_125 = 125
+    CLASS_150 = 150
+    CLASS_175 = 175
+    CLASS_200 = 200
+    CLASS_250 = 250
+    CLASS_300 = 300
+    CLASS_400 = 400
+    CLASS_500 = 500
+
+
+class TradeshowDeliveryTypes(Enum):
+    ADVANCED_WAREHOUSE = "AW"
+    DIRECT_TO_TRADE_SHOW = "DTS"
+
+
+
+class DeclaredTypes(Enum):
+    NEW = 'N'
+    OTHER_THAN_NEW = 'O'
 
 
 class ShippingParty:
@@ -45,17 +77,17 @@ class ShippingParty:
                  street_address: str,
                  city: str,
                  state: str,
-                 zip: str,
+                 zip_code: str,
                  country: str,
                  name: str | None = None,
                  name_plus: str | None = None,
                  acct_number: str | None = None,
-                 submitting_party: str | None = None,
-                 paying_party: str | None = None):
+                 submitting_party: bool | None = None,
+                 paying_party: bool | None = None):
         self.street_address = street_address
         self.city = city
         self.state = state
-        self.zip = zip
+        self.zip = zip_code
         self.country = country
         self.name = name
         self.name_plus = name_plus
@@ -144,17 +176,17 @@ class Commodity:
 
 
 class ShipmentSpecifics:
-    def __init__(self, shipMonth: int,
-                 shipDay: int,
-                 shipYear: int,
+    def __init__(self, ship_month: int,
+                 ship_day: int,
+                 ship_year: int,
                  overall_cubic_feet: float | None = None,
                  overall_length: float | None = None,
                  overall_width: float | None = None,
                  overall_height: float | None = None,
                  measurement_unit: UnitsOfMeasurement | None = None):
-        self.shipMonth = shipMonth
-        self.shipDay = shipDay
-        self.shipYear = shipYear
+        self.shipMonth = ship_month
+        self.shipDay = ship_day
+        self.shipYear = ship_year
         self.cubicFeet = overall_cubic_feet
         self.overall_length = overall_length
         self.overall_width = overall_width
@@ -294,13 +326,14 @@ class AdditionalServices:
         self.terminal_pickup = terminal_pickup
 
         if self.excess_liability is not None and self.declared_value is None:
-            raise ValueError('If excess_liability is true, the declared value must be provided')
+            raise ValueError('If excess liability is true, the declared value must be provided')
         if self.excess_liability is not None and self.declared_type is None:
-            raise ValueError('If excess_liability is true, the declared type must be provided')
+            raise ValueError('If excess liability is true, the declared type must be provided')
         if self.sort_and_segregate is not None and self.num_to_sort_and_segregate is None:
-            raise ValueError('If sort_and_segregate is true, the number of packages to sort and separate must be provided')
+            raise ValueError('If sort and segregate is true, '
+                             'the number of packages to sort and separate must be provided')
         if self.truck_pack is not None and self.truck_pack_count is None:
-            raise ValueError('If truck_pack is true, the number of packages in the truck must be provided')
+            raise ValueError('If truck pack is true, the number of packages in the truck must be provided')
 
     def as_dict(self):
         return {key: value for key, value in {
@@ -370,10 +403,6 @@ def get_quote(shipper: ShippingParty,
     return response_dict
 
 
-def get_current_date() -> tuple:
-    now = datetime.now()
-    return (now.day, now.month, now.year)
-
 if __name__ == '__main__':
     shipper = ShippingParty('123 Main Street', 'Dallas', 'TX', '75201', 'US',
                             'Shipper', submitting_party=True, paying_party=True)
@@ -383,8 +412,8 @@ if __name__ == '__main__':
                                 '98101', 'US', 'Third Party')
 
     commodity = Commodity(weight=100, line_number=1, shipment_class=ShipmentClasses.CLASS_150, length=48, width=48, height=48, unit_number=1, packing_type=PackageType.PKG)
-    today = get_current_date()
-    shipment_specifics = ShipmentSpecifics(shipDay=today[0], shipMonth=today[1], shipYear=today[2], measurement_unit=UnitsOfMeasurement.IN)
+    today = get_current_date_as_tuple()
+    shipment_specifics = ShipmentSpecifics(ship_day=today[0], ship_month=today[1], ship_year=today[2], measurement_unit=UnitsOfMeasurement.IN)
     pickup_services = PickupServices(lift_gate=True, residential=True)
     delivery_services = DeliveryServices(lift_gate=True, residential=True)
     # additional_services = AdditionalServices(excess_liability=True, declared_type=DeclaredTypes.NEW, declared_value=5000, pallet=True)
