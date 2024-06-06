@@ -1,17 +1,18 @@
 import os
 import pprint
 import re
-from enum import Enum
 from datetime import date
+from enum import Enum
 from typing import List
 
 import requests
 import xmltodict
+from email_validator import validate_email, EmailNotValidError
 
 from bol.requestor import Requestor
 from bol.shipping_party import ShippingParty
-from email_validator import validate_email, EmailNotValidError
-from shared_enums import PackageType, UnitsOfMeasurement,  LimitedAccessOptions
+from commodity import Commodity
+from shared_enums import UnitsOfMeasurement, LimitedAccessOptions
 from utils import bool_to_str
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -27,15 +28,6 @@ class PayTerms(Enum):
     PREPAID = 'P'
     COLLECT = 'C'
 
-class HazMatCompatibilities(Enum):
-    CLASS_1_4 = ["B", "C", "D", "E", "F", "G", "S"]
-    CLASS_1_5 = ["D"]
-    CLASS_1_6 = ["N"]
-
-
-class HazMatZones(Enum):
-    CLASS_2_3 = ["A", "B", "C", "D"]
-    CLASS_6_1 = ["A", "B"]
 
 class ShipmentSpecifics:
     def __init__(self,
@@ -61,15 +53,15 @@ class ShipmentSpecifics:
 
     def as_dict(self):
         return {key: value for key, value in {
-            'ShipDate': self.formatted_ship_date,
-            'OtherCarrier': self.other_carrier,
-            'ProNumber': self.pro_number,
-            'CheckDigit': self.pro_number_check_digit,
-            'ProAutoAssign': self.auto_assign_pro_number,
-            'QuoteID': self.quote_id,
-            'Instructions': self.instructions,
-            'TotalCube': self.total_cube,
-            'LWHType': self.cube_unit_of_measurement.value if self.cube_unit_of_measurement else None,
+                'ShipDate'     : self.formatted_ship_date,
+                'OtherCarrier' : self.other_carrier,
+                'ProNumber'    : self.pro_number,
+                'CheckDigit'   : self.pro_number_check_digit,
+                'ProAutoAssign': self.auto_assign_pro_number,
+                'QuoteID'      : self.quote_id,
+                'Instructions' : self.instructions,
+                'TotalCube'    : self.total_cube,
+                'LWHType'      : self.cube_unit_of_measurement.value if self.cube_unit_of_measurement else None,
         }.items() if value is not None}
 
 
@@ -126,14 +118,14 @@ class TimeCriticalShipmentSpecifics:
 
     def as_dict(self):
         return {key: value for key, value in {
-            'TimeKeeper': bool_to_str(self.isTimeCritical),
-            'DeliveryDateType': self.delivery_date_type.value if self.delivery_date_type else None,
-            'DeliveryDateMin': self.delivery_date_min.strftime("%m/%d/%y") if self.delivery_date_min else None,
-            'DeliveryDateMax': self.delivery_date_max.strftime("%m/%d/%y") if self.delivery_date_max else None,
-            'DeliveryTimeType': self.delivery_time_type.value if self.delivery_time_type else None,
-            'DeliveryTime': self.delivery_time,
-            'DeliveryTimeMin': self.delivery_time_min,
-            'DeliveryTimeMax': self.delivery_time_max,
+                'TimeKeeper'      : bool_to_str(self.isTimeCritical),
+                'DeliveryDateType': self.delivery_date_type.value if self.delivery_date_type else None,
+                'DeliveryDateMin' : self.delivery_date_min.strftime("%m/%d/%y") if self.delivery_date_min else None,
+                'DeliveryDateMax' : self.delivery_date_max.strftime("%m/%d/%y") if self.delivery_date_max else None,
+                'DeliveryTimeType': self.delivery_time_type.value if self.delivery_time_type else None,
+                'DeliveryTime'    : self.delivery_time,
+                'DeliveryTimeMin' : self.delivery_time_min,
+                'DeliveryTimeMax' : self.delivery_time_max,
         }.items() if value is not None}
 
 
@@ -158,12 +150,12 @@ class ReferenceNumbers:
 
     def as_dict(self):
         return {key: value for key, value in {
-            'Bol': self.bol_number,
-            f'PO{self.po_number}': self.actual_po_number,
-            f'POPiece{self.po_number}': self.po_pieces,
-            f'POWeight{self.po_number}': self.po_weight,
-            f'PODept{self.po_number}': self.po_department,
-            f'CRN{self.po_number}': self.customer_reference_number
+                'Bol'                      : self.bol_number,
+                f'PO{self.po_number}'      : self.actual_po_number,
+                f'POPiece{self.po_number}' : self.po_pieces,
+                f'POWeight{self.po_number}': self.po_weight,
+                f'PODept{self.po_number}'  : self.po_department,
+                f'CRN{self.po_number}'     : self.customer_reference_number
         }.items() if value is not None}
 
 
@@ -214,14 +206,14 @@ class CopyConfirmation:
 
     def as_dict(self):
         return {key: value for key, value in {
-            'BolCopyShip': bool_to_str(self.bol_to_shipper),
-            'BolCopyCons': bool_to_str(self.bol_to_consignee),
-            'BolCopyTPB': bool_to_str(self.bol_to_third_party),
-            'BolCopyAdd': ','.join(self.bol_to_emails) if self.bol_to_emails else None,
-            'BolCopyLabelShip': bool_to_str(self.shipping_lables_to_shipper),
-            'BolCopyLabelCons': bool_to_str(self.shipping_labels_to_consignee),
-            'BolCopyLabelTPB': bool_to_str(self.shipping_labels_to_third_party),
-            'BolCopyLabelAdd': ','.join(self.shipping_labels_to_emails) if self.shipping_labels_to_emails else None
+                'BolCopyShip'     : bool_to_str(self.bol_to_shipper),
+                'BolCopyCons'     : bool_to_str(self.bol_to_consignee),
+                'BolCopyTPB'      : bool_to_str(self.bol_to_third_party),
+                'BolCopyAdd'      : ','.join(self.bol_to_emails) if self.bol_to_emails else None,
+                'BolCopyLabelShip': bool_to_str(self.shipping_lables_to_shipper),
+                'BolCopyLabelCons': bool_to_str(self.shipping_labels_to_consignee),
+                'BolCopyLabelTPB' : bool_to_str(self.shipping_labels_to_third_party),
+                'BolCopyLabelAdd' : ','.join(self.shipping_labels_to_emails) if self.shipping_labels_to_emails else None
         }.items() if value is not None}
 
 
@@ -240,11 +232,11 @@ class PickupOptions:
 
     def as_dict(self):
         return {key: value for key, value in {
-            'Acc_GRD_PU': bool_to_str(self.liftgate),
-            'Acc_IPU': bool_to_str(self.inside),
-            'Acc_LAP': bool_to_str(self.limited_access),
-            'LAPType': self.limited_access_type.value if self.limited_access_type else None,
-            'Acc_RPU': bool_to_str(self.residential_pickup),
+                'Acc_GRD_PU': bool_to_str(self.liftgate),
+                'Acc_IPU'   : bool_to_str(self.inside),
+                'Acc_LAP'   : bool_to_str(self.limited_access),
+                'LAPType'   : self.limited_access_type.value if self.limited_access_type else None,
+                'Acc_RPU'   : bool_to_str(self.residential_pickup),
         }.items() if value is not None}
 
 
@@ -270,14 +262,14 @@ class DeliveryOptions:
 
     def as_dict(self):
         return {key: value for key, value in {
-            'Acc_CSD': bool_to_str(self.construction_site),
-            'Acc_DELON': bool_to_str(self.on_date),
-            'Acc_GRD_DEL': bool_to_str(self.liftgate),
-            'Acc_IDEL': bool_to_str(self.inside),
-            'Acc_LAD': bool_to_str(self.limited_access),
-            'LADType': self.limited_access_type.value if self.limited_access_type else None,
-            'Acc_RDEL': bool_to_str(self.residential_delivery),
-            'Acc_FLATBD': bool_to_str(self.flatbed),
+                'Acc_CSD'    : bool_to_str(self.construction_site),
+                'Acc_DELON'  : bool_to_str(self.on_date),
+                'Acc_GRD_DEL': bool_to_str(self.liftgate),
+                'Acc_IDEL'   : bool_to_str(self.inside),
+                'Acc_LAD'    : bool_to_str(self.limited_access),
+                'LADType'    : self.limited_access_type.value if self.limited_access_type else None,
+                'Acc_RDEL'   : bool_to_str(self.residential_delivery),
+                'Acc_FLATBD' : bool_to_str(self.flatbed),
         }.items() if value is not None}
 
 
@@ -326,20 +318,20 @@ class AdditionalServices:
 
     def as_dict(self):
         return {key: value for key, value in {
-            'Acc_AR': self.arrival_notification,
-            'Acc_CAP': self.capacity_load,
-            'Acc_BOND': self.customs_or_in_bond_freight,
-            'Acc_ELC': self.excess_liability_coverage,
-            'DeclaredValue': self.declared_value,
-            'Acc_OD': self.over_dimension,
-            'ODLongestSide': self.longest_dimension,
-            'Acc_SS': self.single_shipment,
-            'Acc_SEG': self.sort_and_segregate,
-            'SegPieces': self.number_of_pieces_to_sort_and_segregate,
-            'Acc_TRPACK': self.truck_pack_shipment,
-            'TPBoxes': self.number_truck_pack_boxes,
-            'Acc_BLKH': self.secure_shipment_divider,
-            'Acc_FRE': self.freeze_protection
+                'Acc_AR'       : self.arrival_notification,
+                'Acc_CAP'      : self.capacity_load,
+                'Acc_BOND'     : self.customs_or_in_bond_freight,
+                'Acc_ELC'      : self.excess_liability_coverage,
+                'DeclaredValue': self.declared_value,
+                'Acc_OD'       : self.over_dimension,
+                'ODLongestSide': self.longest_dimension,
+                'Acc_SS'       : self.single_shipment,
+                'Acc_SEG'      : self.sort_and_segregate,
+                'SegPieces'    : self.number_of_pieces_to_sort_and_segregate,
+                'Acc_TRPACK'   : self.truck_pack_shipment,
+                'TPBoxes'      : self.number_truck_pack_boxes,
+                'Acc_BLKH'     : self.secure_shipment_divider,
+                'Acc_FRE'      : self.freeze_protection
         }.items() if value is not None}
 
 
@@ -383,36 +375,43 @@ class DocLabelInfo:
 
     def as_dict(self):
         return {key: value for key, value in {
-            'FileFormat': self.file_format.value if self.file_format else None,
-            'InkJetPrinter': bool_to_str(self.using_inject_printer),
-            'LabelFormat': self.label_format.value if self.label_format else None,
-            'LableNum': self.number_shipping_labels_to_create,
-            'StartPositionAvery5264': self.start_position_avery_5264,
-            'ProLabelNum': self.number_pro_labels,
-            'ProLabelStart': self.starting_page_avery_5160
+                'FileFormat'            : self.file_format.value if self.file_format else None,
+                'InkJetPrinter'         : bool_to_str(self.using_inject_printer),
+                'LabelFormat'           : self.label_format.value if self.label_format else None,
+                'LableNum'              : self.number_shipping_labels_to_create,
+                'StartPositionAvery5264': self.start_position_avery_5264,
+                'ProLabelNum'           : self.number_pro_labels,
+                'ProLabelStart'         : self.starting_page_avery_5160
         }.items() if value is not None}
 
 
-def get_bol(requestor: Requestor,
-            shipping_party: ShippingParty,
-            commodity_lines: List[CommodityLine],
-            shipment_specifics: ShipmentSpecifics | None,
-            time_critical_specifics: TimeCriticalShipmentSpecifics | None = None,
-            reference_numbers: ReferenceNumbers | None = None,
-            copy_confirmation: CopyConfirmation | None = None,
-            pickup_options: PickupOptions | None = None,
-            delivery_options: DeliveryOptions | None = None,
-            additional_services: AdditionalServices | None = None,
-            doc_label_info: DocLabelInfo | None = None,
-            arcbest_bol_endpoint: str = 'https://api.arcbest.com/ship/v1/bol',
-            arcbest_api_key: str = os.environ.get('ARCBEST_API_KEY'),
-            ) -> dict | None:
+def get_bol(
+        requestor: Requestor,
+        shipping_party: ShippingParty,
+        commodity_lines: List[Commodity],
+        shipment_specifics: ShipmentSpecifics,
+        app_id: str | None = None,
+        testing: bool = True,
+        time_critical_specifics: TimeCriticalShipmentSpecifics | None = None,
+        reference_numbers: ReferenceNumbers | None = None,
+        copy_confirmation: CopyConfirmation | None = None,
+        pickup_options: PickupOptions | None = None,
+        delivery_options: DeliveryOptions | None = None,
+        additional_services: AdditionalServices | None = None,
+        doc_label_info: DocLabelInfo | None = None,
+        arcbest_bol_endpoint: str = 'https://www.abfs.com/xml/bolxml.asp',
+        arcbest_api_key: str = os.environ.get('ARCBEST_API_KEY'),
+) -> dict | None:
     response_dict = None
 
     post_body = {
-        **requestor.as_dict(),
-        **shipping_party
+            'testing': bool_to_str(testing),
+            **requestor.as_dict(),
+            **shipping_party.as_shipper_dict()
     }
+
+    if app_id is not None:
+        post_body.update({'AppID': app_id})
 
     for commodity_line in commodity_lines:
         post_body.update(commodity_line.as_dict())
@@ -445,3 +444,52 @@ def get_bol(requestor: Requestor,
         print(f"ArcBest BOL request failed with status code: {response.status_code}")
 
     return response_dict
+
+
+"""
+https://www.abfs.com/xml/bolxml.asp?
+DL=2&
+ID=BQNED065&
+Test=Y&
+RequesterType=1&
+PayTerms=P&
+RequesterName=JOHN+BLACK&RequesterPhone=5555555555
+&ShipName=XYZ+Corp&ShipAddress=123+MAIN&ShipCity=Dyer&ShipState=AR&ShipZip=72935&
+ConsName=ABC+Corp&ConsAddress=321+Elm&ConsCity=LAWRENCE&ConsState=KS&ConsZip=66044&
+HN1=100&HT1=PLT&WT1=1000&CL1=65&NMFC1=123456&SUB1=78&CB1=321&Desc1=MISC+AUTO+PARTS&
+ShipDate=05/31/2024&
+Bol=123BOL45&PO1=1231235435&POPiece1=100&POWeight1=1000&CRN1=1234567890&Acc_ARR=Y&
+FileFormat=A
+"""
+
+if __name__ == '__main__':
+    requestor = Requestor(
+            name='John Black',
+            email='WqkzQ@example.com',
+            phone='5555555555',
+    )
+    shipper = ShippingParty(
+            name='XYZ Corp',
+            street_address='123 Main St',
+            city='Dyer',
+            state='AR',
+            zip_code='72935',
+    )
+    consignee = ShippingParty(
+            name='ABC Corp',
+            street_address='321 Elm St',
+            city='Lawrence',
+            state='KS',
+            zip_code='66044',
+    )
+    commodity = Commodity(
+
+
+            name='MISC AUTO PARTS',
+            quantity=100,
+            weight=1000,
+            length=65,
+            width=78,
+            height=321,
+
+    bol = get_bol(requestor=requestor, shipping_party=shipper)

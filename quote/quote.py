@@ -5,7 +5,7 @@ import xmltodict
 from enum import Enum
 
 from utils import bool_to_str, get_current_date_as_tuple, pp
-from shared_enums import PackageType, UnitsOfMeasurement, LimitedAccessOptions
+from shared_enums import PackageType, UnitsOfMeasurement, LimitedAccessOptions, ShipmentClasses
 
 """
 https://www.abfs.com/xml/aquotexml.asp?
@@ -38,27 +38,6 @@ ShipYear=2024
 """
 # pp = pprint.PrettyPrinter(indent=4)
 # bool_to_str = lambda x: 'Y' if x else 'N'
-
-
-class ShipmentClasses(Enum):
-    CLASS_50 = 50
-    CLASS_55 = 55
-    CLASS_60 = 60
-    CLASS_65 = 65
-    CLASS_70 = 70
-    CLASS_77_5 = 77.5
-    CLASS_85 = 85
-    CLASS_92_5 = 92.5
-    CLASS_100 = 100
-    CLASS_110 = 110
-    CLASS_125 = 125
-    CLASS_150 = 150
-    CLASS_175 = 175
-    CLASS_200 = 200
-    CLASS_250 = 250
-    CLASS_300 = 300
-    CLASS_400 = 400
-    CLASS_500 = 500
 
 
 class TradeshowDeliveryTypes(Enum):
