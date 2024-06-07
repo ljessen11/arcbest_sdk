@@ -9,10 +9,9 @@ import requests
 import xmltodict
 from email_validator import validate_email, EmailNotValidError
 
-from bol.requestor import Requestor
 from bol.shipping_party import ShippingParty
 from commodity import Commodity
-from shared_enums import UnitsOfMeasurement, LimitedAccessOptions
+from shared_enums import UnitsOfMeasurement, LimitedAccessOptions, PackageType, ShipmentClasses
 from utils import bool_to_str
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -130,18 +129,19 @@ class TimeCriticalShipmentSpecifics:
 
 
 class ReferenceNumbers:
+    # the po_index is an index between 1 and 10 and is added as a suffix to the keys for the submitted data
     def __init__(self,
                  bol_number: str | None = None,
-                 po_number: int | None = None,
+                 po_index: int | None = None,
                  actual_po_number: str | None = None,
                  po_pieces: int | None = None,
                  po_weight: float | None = None,
                  po_department: str | None = None,
                  customer_reference_number: str | None = None):
-        if po_number is not None and (po_number == 0 or po_number > 10):
-            raise ValueError('If PO_number is provided, it must be between 1 and 10')
+        if actual_po_number is not None and po_index is not None and (po_index == 0 or po_index > 10):
+            raise ValueError('If PO_number is provided, an index must be providedbetween 1 and 10')
         self.bol_number = bol_number
-        self.po_number = po_number
+        self.po_number = po_index
         self.actual_po_number = actual_po_number
         self.po_pieces = po_pieces
         self.po_weight = po_weight
@@ -385,15 +385,46 @@ class DocLabelInfo:
         }.items() if value is not None}
 
 
+class Requestor:
+    def __init__(self,
+                 payment_terms: PayTerms,
+                 requestor_type: RequestorTypes | None = RequestorTypes.SHIPPER,
+                 name: str | None = None,
+                 email: str | None = None,
+                 phone: str | None = None,
+                 phone_ext: str | None = None,
+                 fax: str | None = None):
+
+        self.payment_terms = payment_terms
+        self.requestor_type = requestor_type
+        self.name = name
+        self.email = email
+        self.phone = phone
+        self.phone_ext = phone_ext
+        self.fax = fax
+
+    def as_dict(self):
+        return {key: value for key, value in {
+                'PayTerms'         : self.payment_terms.value,
+                'RequestorType'    : self.requestor_type.value if self.requestor_type else None,
+                'RequestorName'    : self.name,
+                'RequestorEmail'   : self.email,
+                'RequestorPhone'   : self.phone,
+                'RequestorPhoneExt': self.phone_ext,
+                'RequestorFax'     : self.fax
+        }.items() if value is not None}
+
+
 def get_bol(
         requestor: Requestor,
         shipping_party: ShippingParty,
+        consignee: ShippingParty,
         commodity_lines: List[Commodity],
         shipment_specifics: ShipmentSpecifics,
         app_id: str | None = None,
         testing: bool = True,
         time_critical_specifics: TimeCriticalShipmentSpecifics | None = None,
-        reference_numbers: ReferenceNumbers | None = None,
+        reference_numbers: List[ReferenceNumbers] | None = None,
         copy_confirmation: CopyConfirmation | None = None,
         pickup_options: PickupOptions | None = None,
         delivery_options: DeliveryOptions | None = None,
@@ -402,12 +433,14 @@ def get_bol(
         arcbest_bol_endpoint: str = 'https://www.abfs.com/xml/bolxml.asp',
         arcbest_api_key: str = os.environ.get('ARCBEST_API_KEY'),
 ) -> dict | None:
+
     response_dict = None
 
     post_body = {
             'testing': bool_to_str(testing),
             **requestor.as_dict(),
-            **shipping_party.as_shipper_dict()
+            **shipping_party.as_shipper_dict(),
+            **consignee.as_consignees_dict()
     }
 
     if app_id is not None:
@@ -415,12 +448,16 @@ def get_bol(
 
     for commodity_line in commodity_lines:
         post_body.update(commodity_line.as_dict())
+
     if shipment_specifics is not None:
         post_body.update(shipment_specifics.as_dict())
     if time_critical_specifics is not None:
         post_body.update(time_critical_specifics.as_dict())
+
     if reference_numbers is not None:
-        post_body.update(reference_numbers.as_dict())
+        for ref_num_line in reference_numbers:
+            post_body.update(ref_num_line.as_dict())
+
     if copy_confirmation is not None:
         post_body.update(copy_confirmation.as_dict())
     if pickup_options is not None:
@@ -451,19 +488,32 @@ https://www.abfs.com/xml/bolxml.asp?
 DL=2&
 ID=BQNED065&
 Test=Y&
-RequesterType=1&
-PayTerms=P&
-RequesterName=JOHN+BLACK&RequesterPhone=5555555555
-&ShipName=XYZ+Corp&ShipAddress=123+MAIN&ShipCity=Dyer&ShipState=AR&ShipZip=72935&
+# Requestor 
+RequesterType=1&PayTerms=P&RequesterName=JOHN+BLACK&RequesterPhone=5555555555&
+
+Shipping Party / shipper
+ShipName=XYZ+Corp&ShipAddress=123+MAIN&ShipCity=Dyer&ShipState=AR&ShipZip=72935&
+
+Shipping Part / consignee
 ConsName=ABC+Corp&ConsAddress=321+Elm&ConsCity=LAWRENCE&ConsState=KS&ConsZip=66044&
+
+Commodity / line 1
 HN1=100&HT1=PLT&WT1=1000&CL1=65&NMFC1=123456&SUB1=78&CB1=321&Desc1=MISC+AUTO+PARTS&
+
+ShipmentSpecifics
 ShipDate=05/31/2024&
+
+ReferenceNumbers
 Bol=123BOL45&PO1=1231235435&POPiece1=100&POWeight1=1000&CRN1=1234567890&Acc_ARR=Y&
+
+DocLabelInfo
 FileFormat=A
 """
 
 if __name__ == '__main__':
     requestor = Requestor(
+            payment_terms=PayTerms.PREPAID,
+            requestor_type=RequestorTypes.CONSIGNEE,
             name='John Black',
             email='WqkzQ@example.com',
             phone='5555555555',
@@ -483,13 +533,37 @@ if __name__ == '__main__':
             zip_code='66044',
     )
     commodity = Commodity(
+            line_number=1,
+            number_of_handling_units=100,
+            height=PackageType.PLT,
+            total_weight=1000,
+            shipment_class=ShipmentClasses.CLASS_65,
+            nmfc_number=123456,
+            nmfc_sub_number=78,
+            cube=321,
+            description='Misc. Auto Parts',
+    )
+    ref_nums = ReferenceNumbers(
+            bol_number='123BOL45',
+            po_index=1,
+            actual_po_number='1231235435',
+            po_pieces=100,
+            po_weight=1000,
+            customer_reference_number='1234567890',
+    )
 
+    doc_label = DocLabelInfo(file_format=FileFormats.A)
 
-            name='MISC AUTO PARTS',
-            quantity=100,
-            weight=1000,
-            length=65,
-            width=78,
-            height=321,
+    shipment_specs = ShipmentSpecifics(ship_date=date(2024, 5, 31))
 
-    bol = get_bol(requestor=requestor, shipping_party=shipper)
+    bol = get_bol(
+            requestor=requestor,
+            shipping_party=shipper,
+            consignee=consignee,
+            commodity_lines=[commodity],
+            shipment_specifics=shipment_specs,
+            doc_label_info=doc_label,
+            reference_numbers=[ref_nums]
+    )
+
+    print(bol)
