@@ -149,7 +149,7 @@ class Commodity:
             f'FrtWdth{self.line_number}': self.width,
             f'FrtHght{self.line_number}': self.height,
             f'UnitNo{self.line_number}': self.unit_number,
-            f'UnitType{self.line_number}': self.packaging_type.name if self.packaging_type else None,
+            f'UnitType{self.line_number}': self.packaging_type.value if self.packaging_type else None,
             f'NMFC{self.line_number}': self.nmfc,
         }.items() if value is not None}
 
@@ -390,7 +390,7 @@ if __name__ == '__main__':
     third_party = ShippingParty('789 Main Street', 'Seattle', 'WA',
                                 '98101', 'US', 'Third Party')
 
-    commodity = Commodity(weight=100, line_number=1, shipment_class=ShipmentClasses.CLASS_150, length=48, width=48, height=48, unit_number=1, packing_type=PackageType.PKG)
+    commodity = Commodity(weight=100, line_number=1, shipment_class=ShipmentClasses.CLASS_150, length=48, width=48, height=48, unit_number=1, packing_type=PackageType.Package)
     today = get_current_date_as_tuple()
     shipment_specifics = ShipmentSpecifics(ship_day=today[0], ship_month=today[1], ship_year=today[2], measurement_unit=UnitsOfMeasurement.IN)
     pickup_services = PickupServices(lift_gate=True, residential=True)

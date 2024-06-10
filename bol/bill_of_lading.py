@@ -12,7 +12,7 @@ from email_validator import validate_email, EmailNotValidError
 from bol.shipping_party import ShippingParty
 from commodity import Commodity
 from shared_enums import UnitsOfMeasurement, LimitedAccessOptions, PackageType, ShipmentClasses
-from utils import bool_to_str
+from utils import bool_to_str, get_current_date_as_tuple
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -436,11 +436,15 @@ def get_bol(
 
     response_dict = None
 
+    if arcbest_api_key is None:
+        raise Exception('Missing ARCBEST_API_KEY')
+
     post_body = {
             'testing': bool_to_str(testing),
             **requestor.as_dict(),
             **shipping_party.as_shipper_dict(),
-            **consignee.as_consignees_dict()
+            **consignee.as_consignees_dict(),
+            'ID': arcbest_api_key,
     }
 
     if app_id is not None:
@@ -498,7 +502,7 @@ Shipping Part / consignee
 ConsName=ABC+Corp&ConsAddress=321+Elm&ConsCity=LAWRENCE&ConsState=KS&ConsZip=66044&
 
 Commodity / line 1
-HN1=100&HT1=PLT&WT1=1000&CL1=65&NMFC1=123456&SUB1=78&CB1=321&Desc1=MISC+AUTO+PARTS&
+HN1=100& HT1=PLT& WT1=1000& CL1=65& NMFC1=123456& SUB1=78&CB1=321& Desc1=MISC+AUTO+PARTS&
 
 ShipmentSpecifics
 ShipDate=05/31/2024&
@@ -532,10 +536,15 @@ if __name__ == '__main__':
             state='KS',
             zip_code='66044',
     )
+    # Commodity / line 1
+    # HN1 = 100 & HT1 = PLT & WT1 = 1000 & CL1 = 65 & NMFC1 = 123456 & SUB1 = 78 & CB1 = 321 & Desc1 = MISC + AUTO + PARTS &
     commodity = Commodity(
             line_number=1,
             number_of_handling_units=100,
-            height=PackageType.PLT,
+            handling_unit_type=PackageType.Pallet,
+            length=30,
+            width=40,
+            height=50,
             total_weight=1000,
             shipment_class=ShipmentClasses.CLASS_65,
             nmfc_number=123456,
@@ -554,7 +563,7 @@ if __name__ == '__main__':
 
     doc_label = DocLabelInfo(file_format=FileFormats.A)
 
-    shipment_specs = ShipmentSpecifics(ship_date=date(2024, 5, 31))
+    shipment_specs = ShipmentSpecifics(ship_date=date.today(), cube_unit_of_measurement=UnitsOfMeasurement.IN)
 
     bol = get_bol(
             requestor=requestor,

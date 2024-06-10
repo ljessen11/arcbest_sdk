@@ -35,7 +35,7 @@ logging_config = {
         }
 }
 
-logging.config.dictConfig(logging_config)
+# logging.config.dictConfig(logging_config)
 
 pp = pprint.PrettyPrinter(indent=4)
 
