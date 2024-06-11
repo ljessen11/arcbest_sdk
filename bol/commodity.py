@@ -14,6 +14,7 @@ class HazMatZones(Enum):
     CLASS_6_1 = ["A", "B"]
 
 
+# TODO: There is both a BOL Commodity and a Quote Commodity.  Either add the NS to each or consolidate
 class Commodity:
     def __init__(self,
                  line_number: int,
